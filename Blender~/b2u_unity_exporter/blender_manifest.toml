@@ -1,0 +1,16 @@
+# Blender 4.2+ extension manifest. Older Blender versions use bl_info in __init__.py.
+schema_version = "1.0.0"
+
+id = "b2u_unity_exporter"
+version = "0.1.0"
+name = "Blender to Unity Shader Exporter"
+tagline = "Export FBX and shader node trees for Unity Shader Graph or HLSL"
+maintainer = "B2U"
+type = "add-on"
+tags = ["Import-Export", "Material"]
+
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Write FBX, textures and material data to the chosen export folder"

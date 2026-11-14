@@ -1,0 +1,9 @@
+{
+  "name": "com.b2u.blender-to-unity-shader",
+  "displayName": "Blender to Unity Shader Converter",
+  "version": "0.1.0",
+  "unity": "2021.3",
+  "description": "Exports .blend files to FBX through Blender and converts Blender shader node trees to Unity Shader Graph assets or hand-written HLSL shaders (URP / Built-in).",
+  "keywords": ["blender", "fbx", "shader graph", "hlsl", "materials", "importer"],
+  "author": { "name": "B2U" }
+}
