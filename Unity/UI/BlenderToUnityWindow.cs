@@ -51,6 +51,11 @@ namespace B2U
             {
                 try { JsonUtility.FromJsonOverwrite(json, _opt); } catch { /* corrupt prefs */ }
             }
+            // Settings saved by an older version (or restored after a domain reload) may lack newer fields.
+            if (Array.IndexOf(ExportOptions.ScaleOptionIds, _opt.applyScaleOptions) < 0) _opt.applyScaleOptions = "FBX_SCALE_UNITS";
+            if (Array.IndexOf(ExportOptions.Axes, _opt.axisForward) < 0) _opt.axisForward = "-Z";
+            if (Array.IndexOf(ExportOptions.Axes, _opt.axisUp) < 0) _opt.axisUp = "Y";
+            if (_opt.onlyMaterials == null) _opt.onlyMaterials = "";
             if (!_opt.initialized)
             {
                 _opt.pipeline = ExportOptions.DetectPipeline();
@@ -171,7 +176,7 @@ namespace B2U
                         "Scale all data (some importers do not support scaled armatures)."), _opt.scale, 0.001f, 1000f);
                     var si = Mathf.Max(0, Array.IndexOf(ExportOptions.ScaleOptionIds, _opt.applyScaleOptions));
                     si = EditorGUILayout.Popup(new GUIContent("Apply Scalings",
-                        "How custom and unit scaling are applied in the FBX file."), si, ExportOptions.ScaleOptionLabels);
+                        "How custom and unit scaling are applied in the FBX file."), si, ScaleOptionContents);
                     _opt.applyScaleOptions = ExportOptions.ScaleOptionIds[si];
                     _opt.axisForward = AxisPopup("Forward", _opt.axisForward);
                     _opt.axisUp = AxisPopup("Up", _opt.axisUp);
@@ -230,6 +235,10 @@ namespace B2U
             DrawReport();
             EditorGUILayout.EndScrollView();
         }
+
+        // EditorGUILayout.Popup has no (GUIContent, int, string[]) overload; options must be GUIContent[].
+        static readonly GUIContent[] ScaleOptionContents =
+            ExportOptions.ScaleOptionLabels.Select(l => new GUIContent(l)).ToArray();
 
         static string AxisPopup(string label, string value)
         {
