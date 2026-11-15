@@ -792,7 +792,12 @@ def export_fbx(path, fbx_cfg):
     if use_selection:
         view_layer = bpy.context.view_layer
         for o in view_layer.objects:
-            o.select_set(o.name in OBJECT_FILTER)
+            wanted = o.name in OBJECT_FILTER
+            if wanted:
+                # Hidden objects cannot be selected; this only affects the temporary copy.
+                o.hide_set(False)
+                o.hide_select = False
+            o.select_set(wanted)
     kwargs = dict(
         filepath=path,
         use_selection=use_selection,

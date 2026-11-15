@@ -89,6 +89,9 @@ plugin, so both paths produce identical results.
 - **File → Export → Unity (B2U) (.fbx + shaders)**. Choose a location inside a Unity project's
   `Assets` folder, then pick Shader Graph or HLSL, the render pipeline, selection-only export,
   baking and the FBX options.
+- **Include → Limit to** works like Blender's FBX exporter: Selected Objects, Visible Objects and
+  Active Collection (including child collections). Ticked limits combine. They also decide which
+  materials are converted.
 - **Transform** has the same options as Blender's FBX exporter: Scale, Apply Scalings, Forward,
   Up, Apply Unit, Use Space Transform and Apply Transform. The defaults are tuned for Unity
   (Forward −Z, Up Y, FBX Units Scale), and the Unity converter window has the same section.

@@ -332,7 +332,22 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
     filter_glob: StringProperty(default="*.fbx", options={"HIDDEN"})
 
     # Scope
-    use_selection: BoolProperty(name="Selected Objects", description="Export only selected objects", default=False)
+    # Include > Limit to (same as Blender's FBX exporter; checked limits combine)
+    use_selection: BoolProperty(
+        name="Selected Objects",
+        description="Export selected and visible objects only",
+        default=False,
+    )
+    use_visible: BoolProperty(
+        name="Visible Objects",
+        description="Export visible objects only",
+        default=False,
+    )
+    use_active_collection: BoolProperty(
+        name="Active Collection",
+        description="Export only objects from the active collection (and its children)",
+        default=False,
+    )
     all_materials: BoolProperty(name="Unused Materials", description="Also export materials not assigned to objects", default=False)
 
     # FBX
@@ -443,7 +458,10 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
 
         box = layout.box()
         box.label(text="Include", icon="OBJECT_DATA")
-        box.prop(self, "use_selection")
+        col = box.column(heading="Limit to")
+        col.prop(self, "use_selection")
+        col.prop(self, "use_visible")
+        col.prop(self, "use_active_collection")
         box.prop(self, "all_materials")
         box.column().prop(self, "object_types")
 
@@ -477,9 +495,28 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
         col.prop(self, "anim_sampling_rate")
         col.prop(self, "anim_simplify")
 
+    def limited_objects(self, context):
+        """Object names allowed by the 'Limit to' options, or None when no limit is active."""
+        if not (self.use_selection or self.use_visible or self.use_active_collection):
+            return None
+        view_layer = context.view_layer
+        if self.use_active_collection:
+            candidates = list(view_layer.active_layer_collection.collection.all_objects)
+        else:
+            candidates = list(view_layer.objects)
+        names = []
+        for o in candidates:
+            if self.use_selection and not o.select_get(view_layer=view_layer):
+                continue
+            if self.use_visible and not o.visible_get(view_layer=view_layer):
+                continue
+            names.append(o.name)
+        return names
+
     def execute(self, context):
-        if self.use_selection and not context.selected_objects:
-            self.report({"ERROR"}, "Nothing selected")
+        limited = self.limited_objects(context)
+        if limited is not None and not limited:
+            self.report({"ERROR"}, "No objects match the 'Limit to' options")
             return {"CANCELLED"}
         target = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), self.filename_ext)
         stem = os.path.splitext(os.path.basename(target))[0]
@@ -489,7 +526,7 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
         job.update({
             "fbxName": stem + ".fbx",
             "exportFbx": True,
-            "objects": [o.name for o in context.selected_objects] if self.use_selection else [],
+            "objects": limited or [],
             "allMaterials": self.all_materials,
             "fbx": {
                 "scale": self.global_scale,
