@@ -93,7 +93,23 @@ plugin, so both paths produce identical results.
   Key All Bones, NLA Strips, All Actions, Force Start/End Keying, Sampling Rate and Simplify.
   Unity imports each exported action or NLA strip as its own animation clip on the FBX. The Unity
   converter window has the same options under **Animation**.
-- **Shader Editor → Sidebar (N) → Unity** lists every node feeding the active material's output
+- In the Unity converter window, **Only These Materials** (comma separated) limits the conversion
+  to the named materials. Untick **Export FBX** to import only materials.
+- **File → Export → Unity Materials (B2U) (shaders only)** exports just the materials you tick:
+  their node data and textures, with no geometry or FBX. It preselects the materials of the
+  selected objects. Use **All** and the filter box for long lists. Materials that aren't assigned
+  to any mesh still work. If they need baking, they bake on a temporary UV plane. In Unity you get
+  one Shader Graph (or `.shader`) and one `.mat` per material:
+
+  ```
+  Assets/BlenderExports/<name>/
+    <name>.b2u.json   textures/   Shaders/   Materials/
+  ```
+
+  The format is the add-on's own `.b2u.json` bundle rather than FBX. FBX can't store node trees,
+  and it needs geometry.
+- **Shader Editor → Sidebar (N) → Unity** has an **Export This Material** button for the active
+  material. It also lists every node feeding the active material's output
   and marks it as *Converted*, *Approximated* or *Baked to texture*. Click a node to jump to it.
 
 The export runs in a background Blender process on a temporary copy of the file, so your open

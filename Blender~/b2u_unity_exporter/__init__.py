@@ -29,7 +29,7 @@ import tempfile
 import threading
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper
 
 from . import b2u_export as core
@@ -113,16 +113,9 @@ class B2U_AddonPreferences(bpy.types.AddonPreferences):
 # Export operator
 # --------------------------------------------------------------------------------------
 
-class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
-    """Export FBX, textures and shader node data for Unity (converted by the B2U Unity package)"""
-    bl_idname = "export_scene.b2u_unity"
-    bl_label = "Export to Unity"
-    bl_options = {"PRESET"}
+class B2UCommonProps:
+    """Unity conversion and baking options shared by both export operators."""
 
-    filename_ext = ".fbx"
-    filter_glob: StringProperty(default="*.fbx", options={"HIDDEN"})
-
-    # Unity conversion
     shader_output: EnumProperty(
         name="Shader Output",
         items=[("SHADER_GRAPH", "Shader Graph", "Editable .shadergraph assets"),
@@ -140,12 +133,6 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
         description="Put the export into a folder named after the file",
         default=True,
     )
-
-    # Scope
-    use_selection: BoolProperty(name="Selected Objects", description="Export only selected objects", default=False)
-    all_materials: BoolProperty(name="Unused Materials", description="Also export materials not assigned to objects", default=False)
-
-    # Materials
     bake_unsupported: BoolProperty(
         name="Bake Unsupported Nodes",
         description="Bake procedural textures and other nodes without a Unity equivalent to textures (Cycles)",
@@ -158,57 +145,63 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
     )
     bake_samples: IntProperty(name="Bake Samples", default=16, min=1, max=4096)
 
-    # FBX
-    global_scale: FloatProperty(name="Scale", default=1.0, min=0.001, max=1000.0)
-    apply_modifiers: BoolProperty(name="Apply Modifiers", default=True)
-    # Animation (mirrors Blender's FBX exporter "Bake Animation" panel)
-    bake_animation: BoolProperty(
-        name="Bake Animation",
-        description="Export baked keyframe animation",
-        default=False,
-    )
-    anim_key_all_bones: BoolProperty(
-        name="Key All Bones",
-        description="Force exporting at least one key of animation for all bones "
-                    "(needed with some target applications, like UE4)",
-        default=True,
-    )
-    anim_nla_strips: BoolProperty(
-        name="NLA Strips",
-        description="Export each non-muted NLA strip as a separated FBX's AnimStack, if any, "
-                    "instead of global scene animation",
-        default=True,
-    )
-    anim_all_actions: BoolProperty(
-        name="All Actions",
-        description="Export each action as a separated FBX's AnimStack, instead of global scene animation "
-                    "(note that animated objects will get all actions compatible with them, "
-                    "others will get no animation at all)",
-        default=True,
-    )
-    anim_force_start_end_keying: BoolProperty(
-        name="Force Start/End Keying",
-        description="Always add a keyframe at start and end of actions for animated channels",
-        default=True,
-    )
-    anim_sampling_rate: FloatProperty(
-        name="Sampling Rate",
-        description="How often to evaluate animated values (in frames)",
-        default=1.0, min=0.01, max=100.0, soft_min=0.1, soft_max=10.0,
-    )
-    anim_simplify: FloatProperty(
-        name="Simplify",
-        description="How much to simplify baked values (0.0 to disable, the higher the more simplified)",
-        default=1.0, min=0.0, max=100.0, soft_min=0.0, soft_max=10.0,
-    )
-    apply_transform: BoolProperty(name="Apply Transform", description="FBX exporter's experimental Apply Transform", default=False)
-    object_types: EnumProperty(
-        name="Object Types",
-        options={"ENUM_FLAG"},
-        items=[("MESH", "Mesh", ""), ("ARMATURE", "Armature", ""), ("EMPTY", "Empty", ""),
-               ("LIGHT", "Light", ""), ("CAMERA", "Camera", ""), ("OTHER", "Other", "")],
-        default={"MESH", "ARMATURE", "EMPTY", "OTHER"},
-    )
+    def draw_unity_box(self, layout):
+        box = layout.box()
+        box.label(text="Unity", icon="SHADING_RENDERED")
+        box.prop(self, "shader_output")
+        box.prop(self, "pipeline")
+        box.prop(self, "use_subfolder")
+        if find_unity_assets_dir(os.path.dirname(bpy.path.abspath(self.filepath))) is None:
+            box.label(text="Not inside a Unity project's Assets folder", icon="ERROR")
+
+    def draw_bake_box(self, layout):
+        box = layout.box()
+        box.label(text="Baking", icon="RENDER_STILL")
+        box.prop(self, "bake_unsupported")
+        sub = box.column()
+        sub.enabled = self.bake_unsupported
+        sub.prop(self, "bake_size")
+        sub.prop(self, "bake_samples")
+
+    def common_job(self, out_dir, stem):
+        return {
+            "outputDir": out_dir,
+            "manifestName": stem + MANIFEST_SUFFIX,
+            "sourceBlend": bpy.data.filepath or (stem + ".blend"),
+            "bakeUnsupported": self.bake_unsupported,
+            "bakeSize": int(self.bake_size),
+            "bakeSamples": self.bake_samples,
+            "supportedNodes": sorted(core.DEFAULT_SUPPORTED),
+            "unity": {
+                "shaderOutput": "ShaderGraph" if self.shader_output == "SHADER_GRAPH" else "HLSL",
+                "pipeline": "URP" if self.pipeline == "URP" else "BuiltIn",
+                "bakeAnimation": False,
+            },
+        }
+
+    def default_folder(self, context):
+        prefs = addon_prefs(context)
+        if prefs and prefs.unity_project:
+            assets = os.path.join(bpy.path.abspath(prefs.unity_project), "Assets")
+            if os.path.isdir(assets):
+                folder = os.path.join(assets, prefs.export_folder or "")
+                os.makedirs(folder, exist_ok=True)
+                return folder
+        return ""
+
+    def output_dir(self, stem, target_dir):
+        out_dir = target_dir
+        if self.use_subfolder and os.path.basename(out_dir) != stem:
+            out_dir = os.path.join(out_dir, stem)
+        os.makedirs(out_dir, exist_ok=True)
+        if find_unity_assets_dir(out_dir) is None:
+            self.report({"WARNING"}, "Export folder is not inside a Unity project's Assets folder; "
+                                     "copy it into Assets/ manually.")
+        return out_dir
+
+
+class B2UBackgroundExport:
+    """Runs the exporter in a background Blender process on a snapshot of the current file."""
 
     # Runtime state of the modal export
     _proc = None
@@ -218,116 +211,7 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
     _tmpdir = ""
     _manifest = ""
 
-    def invoke(self, context, event):
-        prefs = addon_prefs(context)
-        stem = bpy.path.display_name_from_filepath(bpy.data.filepath) or "untitled"
-        if prefs and prefs.unity_project:
-            assets = os.path.join(bpy.path.abspath(prefs.unity_project), "Assets")
-            if os.path.isdir(assets):
-                folder = os.path.join(assets, prefs.export_folder or "")
-                os.makedirs(folder, exist_ok=True)
-                self.filepath = os.path.join(folder, stem + self.filename_ext)
-        if not self.filepath:
-            self.filepath = stem + self.filename_ext
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
-
-    def draw(self, context):
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-
-        box = layout.box()
-        box.label(text="Unity", icon="SHADING_RENDERED")
-        box.prop(self, "shader_output")
-        box.prop(self, "pipeline")
-        box.prop(self, "use_subfolder")
-        if find_unity_assets_dir(os.path.dirname(self.filepath)) is None:
-            box.label(text="Not inside a Unity project's Assets folder", icon="ERROR")
-
-        box = layout.box()
-        box.label(text="Include", icon="OBJECT_DATA")
-        box.prop(self, "use_selection")
-        box.prop(self, "all_materials")
-        box.column().prop(self, "object_types")
-
-        box = layout.box()
-        box.label(text="Materials", icon="MATERIAL")
-        box.prop(self, "bake_unsupported")
-        sub = box.column()
-        sub.enabled = self.bake_unsupported
-        sub.prop(self, "bake_size")
-        sub.prop(self, "bake_samples")
-
-        box = layout.box()
-        box.label(text="FBX", icon="EXPORT")
-        box.prop(self, "global_scale")
-        box.prop(self, "apply_modifiers")
-        box.prop(self, "apply_transform")
-
-        box = layout.box()
-        header = box.row()
-        header.prop(self, "bake_animation")
-        col = box.column()
-        col.enabled = self.bake_animation
-        col.prop(self, "anim_key_all_bones")
-        col.prop(self, "anim_nla_strips")
-        col.prop(self, "anim_all_actions")
-        col.prop(self, "anim_force_start_end_keying")
-        col.prop(self, "anim_sampling_rate")
-        col.prop(self, "anim_simplify")
-
-    # ------------------------------------------------------------------
-
-    def _build_job(self, context, out_dir, stem):
-        objects = [o.name for o in context.selected_objects] if self.use_selection else []
-        return {
-            "outputDir": out_dir,
-            "fbxName": stem + ".fbx",
-            "manifestName": stem + MANIFEST_SUFFIX,
-            "sourceBlend": bpy.data.filepath or (stem + ".blend"),
-            "exportFbx": True,
-            "objects": objects,
-            "fbx": {
-                "scale": self.global_scale,
-                "applyModifiers": self.apply_modifiers,
-                "bakeAnimation": self.bake_animation,
-                "animKeyAllBones": self.anim_key_all_bones,
-                "animNlaStrips": self.anim_nla_strips,
-                "animAllActions": self.anim_all_actions,
-                "animForceStartEndKeying": self.anim_force_start_end_keying,
-                "animSamplingRate": self.anim_sampling_rate,
-                "animSimplify": self.anim_simplify,
-                "objectTypes": sorted(self.object_types),
-                "applyTransform": self.apply_transform,
-            },
-            "allMaterials": self.all_materials,
-            "bakeUnsupported": self.bake_unsupported,
-            "bakeSize": int(self.bake_size),
-            "bakeSamples": self.bake_samples,
-            "supportedNodes": sorted(core.DEFAULT_SUPPORTED),
-            "unity": {
-                "shaderOutput": "ShaderGraph" if self.shader_output == "SHADER_GRAPH" else "HLSL",
-                "pipeline": "URP" if self.pipeline == "URP" else "BuiltIn",
-                "bakeAnimation": self.bake_animation,
-            },
-        }
-
-    def execute(self, context):
-        if self.use_selection and not context.selected_objects:
-            self.report({"ERROR"}, "Nothing selected")
-            return {"CANCELLED"}
-
-        target = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), self.filename_ext)
-        stem = os.path.splitext(os.path.basename(target))[0]
-        out_dir = os.path.dirname(target)
-        if self.use_subfolder and os.path.basename(out_dir) != stem:
-            out_dir = os.path.join(out_dir, stem)
-        os.makedirs(out_dir, exist_ok=True)
-        if find_unity_assets_dir(out_dir) is None:
-            self.report({"WARNING"}, "Export folder is not inside a Unity project's Assets folder; "
-                                     "copy it into Assets/ manually.")
-
+    def start_export(self, context, job):
         if context.object is not None and context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
 
@@ -336,11 +220,10 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
         tmp_blend = os.path.join(self._tmpdir, "source.blend")
         bpy.ops.wm.save_as_mainfile(filepath=tmp_blend, copy=True, check_existing=False)
 
-        job = self._build_job(context, out_dir, stem)
         job_path = os.path.join(self._tmpdir, "job.json")
         with open(job_path, "w", encoding="utf-8") as fh:
             json.dump(job, fh, indent=1)
-        self._manifest = os.path.join(out_dir, job["manifestName"])
+        self._manifest = os.path.join(job["outputDir"], job["manifestName"])
 
         cmd = [bpy.app.binary_path, "-b", tmp_blend, "--python-exit-code", "1",
                "--python", os.path.abspath(core.__file__), "--", "--config", job_path]
@@ -438,6 +321,258 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
             self._tmpdir = ""
 
 
+class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.Operator, ExportHelper):
+    """Export FBX, textures and shader node data for Unity (converted by the B2U Unity package)"""
+    bl_idname = "export_scene.b2u_unity"
+    bl_label = "Export to Unity"
+    bl_options = {"PRESET"}
+
+    filename_ext = ".fbx"
+    filter_glob: StringProperty(default="*.fbx", options={"HIDDEN"})
+
+    # Scope
+    use_selection: BoolProperty(name="Selected Objects", description="Export only selected objects", default=False)
+    all_materials: BoolProperty(name="Unused Materials", description="Also export materials not assigned to objects", default=False)
+
+    # FBX
+    global_scale: FloatProperty(name="Scale", default=1.0, min=0.001, max=1000.0)
+    apply_modifiers: BoolProperty(name="Apply Modifiers", default=True)
+    # Animation (mirrors Blender's FBX exporter "Bake Animation" panel)
+    bake_animation: BoolProperty(
+        name="Bake Animation",
+        description="Export baked keyframe animation",
+        default=False,
+    )
+    anim_key_all_bones: BoolProperty(
+        name="Key All Bones",
+        description="Force exporting at least one key of animation for all bones "
+                    "(needed with some target applications, like UE4)",
+        default=True,
+    )
+    anim_nla_strips: BoolProperty(
+        name="NLA Strips",
+        description="Export each non-muted NLA strip as a separated FBX's AnimStack, if any, "
+                    "instead of global scene animation",
+        default=True,
+    )
+    anim_all_actions: BoolProperty(
+        name="All Actions",
+        description="Export each action as a separated FBX's AnimStack, instead of global scene animation "
+                    "(note that animated objects will get all actions compatible with them, "
+                    "others will get no animation at all)",
+        default=True,
+    )
+    anim_force_start_end_keying: BoolProperty(
+        name="Force Start/End Keying",
+        description="Always add a keyframe at start and end of actions for animated channels",
+        default=True,
+    )
+    anim_sampling_rate: FloatProperty(
+        name="Sampling Rate",
+        description="How often to evaluate animated values (in frames)",
+        default=1.0, min=0.01, max=100.0, soft_min=0.1, soft_max=10.0,
+    )
+    anim_simplify: FloatProperty(
+        name="Simplify",
+        description="How much to simplify baked values (0.0 to disable, the higher the more simplified)",
+        default=1.0, min=0.0, max=100.0, soft_min=0.0, soft_max=10.0,
+    )
+    apply_transform: BoolProperty(name="Apply Transform", description="FBX exporter's experimental Apply Transform", default=False)
+    object_types: EnumProperty(
+        name="Object Types",
+        options={"ENUM_FLAG"},
+        items=[("MESH", "Mesh", ""), ("ARMATURE", "Armature", ""), ("EMPTY", "Empty", ""),
+               ("LIGHT", "Light", ""), ("CAMERA", "Camera", ""), ("OTHER", "Other", "")],
+        default={"MESH", "ARMATURE", "EMPTY", "OTHER"},
+    )
+
+    def invoke(self, context, event):
+        stem = bpy.path.display_name_from_filepath(bpy.data.filepath) or "untitled"
+        self.filepath = os.path.join(self.default_folder(context), stem + self.filename_ext)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        self.draw_unity_box(layout)
+
+        box = layout.box()
+        box.label(text="Include", icon="OBJECT_DATA")
+        box.prop(self, "use_selection")
+        box.prop(self, "all_materials")
+        box.column().prop(self, "object_types")
+
+        self.draw_bake_box(layout)
+
+        box = layout.box()
+        box.label(text="FBX", icon="EXPORT")
+        box.prop(self, "global_scale")
+        box.prop(self, "apply_modifiers")
+        box.prop(self, "apply_transform")
+
+        box = layout.box()
+        header = box.row()
+        header.prop(self, "bake_animation")
+        col = box.column()
+        col.enabled = self.bake_animation
+        col.prop(self, "anim_key_all_bones")
+        col.prop(self, "anim_nla_strips")
+        col.prop(self, "anim_all_actions")
+        col.prop(self, "anim_force_start_end_keying")
+        col.prop(self, "anim_sampling_rate")
+        col.prop(self, "anim_simplify")
+
+    def execute(self, context):
+        if self.use_selection and not context.selected_objects:
+            self.report({"ERROR"}, "Nothing selected")
+            return {"CANCELLED"}
+        target = bpy.path.ensure_ext(bpy.path.abspath(self.filepath), self.filename_ext)
+        stem = os.path.splitext(os.path.basename(target))[0]
+        out_dir = self.output_dir(stem, os.path.dirname(target))
+
+        job = self.common_job(out_dir, stem)
+        job.update({
+            "fbxName": stem + ".fbx",
+            "exportFbx": True,
+            "objects": [o.name for o in context.selected_objects] if self.use_selection else [],
+            "allMaterials": self.all_materials,
+            "fbx": {
+                "scale": self.global_scale,
+                "applyModifiers": self.apply_modifiers,
+                "bakeAnimation": self.bake_animation,
+                "animKeyAllBones": self.anim_key_all_bones,
+                "animNlaStrips": self.anim_nla_strips,
+                "animAllActions": self.anim_all_actions,
+                "animForceStartEndKeying": self.anim_force_start_end_keying,
+                "animSamplingRate": self.anim_sampling_rate,
+                "animSimplify": self.anim_simplify,
+                "objectTypes": sorted(self.object_types),
+                "applyTransform": self.apply_transform,
+            },
+        })
+        job["unity"]["bakeAnimation"] = self.bake_animation
+        return self.start_export(context, job)
+
+
+# --------------------------------------------------------------------------------------
+# Materials-only export
+# --------------------------------------------------------------------------------------
+
+class B2U_MaterialItem(bpy.types.PropertyGroup):
+    # "name" is provided by PropertyGroup.
+    export: BoolProperty(name="", default=False)
+
+
+def _toggle_all(self, _context):
+    for item in self.materials:
+        item.export = self.select_all
+
+
+def exportable_materials():
+    return sorted((m for m in bpy.data.materials if not m.is_grease_pencil), key=lambda m: m.name.lower())
+
+
+class EXPORT_SCENE_OT_b2u_unity_materials(B2UCommonProps, B2UBackgroundExport, bpy.types.Operator, ExportHelper):
+    """Export only the chosen materials (shader node data + textures, no geometry) to Unity"""
+    bl_idname = "export_scene.b2u_unity_materials"
+    bl_label = "Export Materials to Unity"
+    bl_options = {"PRESET"}
+
+    # The manifest is "<name>.b2u.json"; ".json" keeps ExportHelper's extension handling simple.
+    filename_ext = ".json"
+    filter_glob: StringProperty(default="*.b2u.json", options={"HIDDEN"})
+
+    materials: CollectionProperty(type=B2U_MaterialItem, options={"SKIP_SAVE"})
+    material_name: StringProperty(
+        name="Material",
+        description="Preselect only this material (used by the Shader Editor panel)",
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
+    select_all: BoolProperty(name="All", default=False, update=_toggle_all, options={"SKIP_SAVE"})
+    filter_text: StringProperty(name="Filter", options={"SKIP_SAVE"})
+
+    def invoke(self, context, event):
+        if self.material_name:
+            wanted = {self.material_name}
+        else:
+            wanted = {s.material.name for o in context.selected_objects
+                      for s in getattr(o, "material_slots", []) if s.material}
+            if not wanted and context.object is not None and context.object.active_material:
+                wanted = {context.object.active_material.name}
+
+        self.materials.clear()
+        for m in exportable_materials():
+            item = self.materials.add()
+            item.name = m.name
+            item.export = m.name in wanted
+
+        chosen = [i.name for i in self.materials if i.export]
+        if len(chosen) == 1:
+            stem = bpy.path.clean_name(chosen[0])
+        else:
+            stem = (bpy.path.display_name_from_filepath(bpy.data.filepath) or "untitled") + "_Materials"
+        self.filepath = os.path.join(self.default_folder(context), stem + MANIFEST_SUFFIX)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        self.draw_unity_box(layout)
+
+        box = layout.box()
+        chosen = sum(1 for i in self.materials if i.export)
+        box.label(text="Materials (%d of %d)" % (chosen, len(self.materials)), icon="MATERIAL")
+        row = box.row(align=True)
+        row.use_property_split = False
+        row.prop(self, "select_all", toggle=True)
+        row.prop(self, "filter_text", text="", icon="VIEWZOOM")
+        col = box.column(align=True)
+        col.use_property_split = False
+        needle = self.filter_text.lower()
+        for item in self.materials:
+            if needle and needle not in item.name.lower():
+                continue
+            mat = bpy.data.materials.get(item.name)
+            icon_value = 0
+            if mat is not None and mat.preview is not None:
+                icon_value = mat.preview.icon_id
+            r = col.row(align=True)
+            r.prop(item, "export", text="")
+            if icon_value:
+                r.label(text=item.name, icon_value=icon_value)
+            else:
+                r.label(text=item.name, icon="MATERIAL")
+
+        self.draw_bake_box(layout)
+        if self.bake_unsupported:
+            layout.label(text="Unassigned materials bake on a temporary UV plane.", icon="INFO")
+
+    def execute(self, context):
+        names = [i.name for i in self.materials if i.export]
+        if not names and self.material_name:
+            names = [self.material_name]
+        if not names:
+            self.report({"ERROR"}, "No materials chosen")
+            return {"CANCELLED"}
+
+        target = bpy.path.abspath(self.filepath)
+        base = os.path.basename(target)
+        for ext in (".json", ".b2u"):
+            if base.lower().endswith(ext):
+                base = base[: -len(ext)]
+        stem = base or "Materials"
+        out_dir = self.output_dir(stem, os.path.dirname(target))
+
+        job = self.common_job(out_dir, stem)
+        job.update({"exportFbx": False, "materials": names, "objects": [], "allMaterials": False})
+        return self.start_export(context, job)
+
+
 # --------------------------------------------------------------------------------------
 # Shader Editor panel: shows how each node of the active material will convert
 # --------------------------------------------------------------------------------------
@@ -480,12 +615,17 @@ class NODE_PT_b2u_unity(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(EXPORT_SCENE_OT_b2u_unity.bl_idname, text="Export to Unity...", icon="EXPORT")
+        col = layout.column(align=True)
+        col.operator(EXPORT_SCENE_OT_b2u_unity.bl_idname, text="Export Scene to Unity...", icon="EXPORT")
+        col.operator(EXPORT_SCENE_OT_b2u_unity_materials.bl_idname, text="Export Materials to Unity...", icon="MATERIAL")
 
         mat = context.material
         if mat is None:
             layout.label(text="No active material")
             return
+        op = layout.operator(EXPORT_SCENE_OT_b2u_unity_materials.bl_idname,
+                             text="Export This Material", icon="EXPORT")
+        op.material_name = mat.name
         if not mat.use_nodes or mat.node_tree is None:
             layout.label(text="Not using nodes: viewport color is exported", icon="INFO")
             return
@@ -530,11 +670,14 @@ class NODE_PT_b2u_unity(bpy.types.Panel):
 
 def menu_func_export(self, context):
     self.layout.operator(EXPORT_SCENE_OT_b2u_unity.bl_idname, text="Unity (B2U) (.fbx + shaders)")
+    self.layout.operator(EXPORT_SCENE_OT_b2u_unity_materials.bl_idname, text="Unity Materials (B2U) (shaders only)")
 
 
 CLASSES = (
     B2U_AddonPreferences,
+    B2U_MaterialItem,
     EXPORT_SCENE_OT_b2u_unity,
+    EXPORT_SCENE_OT_b2u_unity_materials,
     NODE_OT_b2u_select_node,
     NODE_PT_b2u_unity,
 )

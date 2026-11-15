@@ -40,6 +40,7 @@ namespace B2U
 
         // Materials
         public bool allMaterials = false;
+        public string onlyMaterials = "";   // comma separated; empty = all
         public bool bakeUnsupported = true;
         public int bakeSize = 1024;
         public int bakeSamples = 16;

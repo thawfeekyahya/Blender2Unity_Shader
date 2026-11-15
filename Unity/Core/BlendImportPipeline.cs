@@ -114,6 +114,7 @@ namespace B2U
                     }
                 },
                 { "allMaterials", opt.allMaterials },
+                { "materials", (opt.onlyMaterials ?? "").Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToList() },
                 { "bakeUnsupported", opt.bakeUnsupported },
                 { "bakeSize", Mathf.Clamp(opt.bakeSize, 16, 8192) },
                 { "bakeSamples", Mathf.Clamp(opt.bakeSamples, 1, 4096) },

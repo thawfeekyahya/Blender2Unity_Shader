@@ -132,6 +132,11 @@ namespace B2U
                 }
                 _opt.allMaterials = EditorGUILayout.Toggle(new GUIContent("Include Unused Materials",
                     "Also convert materials not assigned to any object."), _opt.allMaterials);
+                _opt.onlyMaterials = EditorGUILayout.TextField(new GUIContent("Only These Materials",
+                    "Comma separated Blender material names. Leave empty to convert all. " +
+                    "Untick 'Export FBX' to import just the materials."), _opt.onlyMaterials);
+                if (!string.IsNullOrWhiteSpace(_opt.onlyMaterials) && _opt.exportFbx)
+                    EditorGUILayout.HelpBox("The FBX still contains all objects. Untick 'Export FBX' for a materials-only import.", MessageType.None);
                 _opt.remapFbxMaterials = EditorGUILayout.Toggle("Assign To FBX", _opt.remapFbxMaterials);
                 _opt.overwriteMaterials = EditorGUILayout.Toggle("Overwrite Existing", _opt.overwriteMaterials);
                 EditorGUI.indentLevel--;

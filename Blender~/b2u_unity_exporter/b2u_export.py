@@ -18,7 +18,8 @@ job.json (written by the Unity plugin):
   "supportedNodes": ["ShaderNodeBsdfPrincipled", ...]
 }
 
-Optional keys: "objects" (restrict to these object names), "manifestName" (default
+Optional keys: "objects" (restrict to these object names), "materials" (export exactly these
+material names, assigned or not; combine with "exportFbx": false for a materials-only bundle), "manifestName" (default
 "materials.json"), "sourceBlend" (original .blend path when running on a temp copy),
 "unity" (options passed through to the Unity importer).
 
@@ -478,6 +479,20 @@ def objects_using(mat):
             if o.type == "MESH" and any(s.material == mat for s in o.material_slots)]
 
 
+def make_bake_plane(mat):
+    """A 2x2 quad with a 0..1 UV layout, linked to the scene and using mat."""
+    mesh = bpy.data.meshes.new("B2U_BakePlane")
+    mesh.from_pydata([(-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (1.0, 1.0, 0.0), (-1.0, 1.0, 0.0)], [], [(0, 1, 2, 3)])
+    uv = mesh.uv_layers.new(name="UVMap")
+    for loop, co in zip(uv.data, [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]):
+        loop.uv = co
+    mesh.materials.append(mat)
+    mesh.update()
+    obj = bpy.data.objects.new("B2U_BakePlane", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
 class Baker:
     def __init__(self, cfg, out_dir, warnings):
         self.supported = supported_set(cfg)
@@ -532,18 +547,27 @@ class Baker:
             return
 
         objs = [o for o in objects_using(mat) if o.data.uv_layers]
+        plane = None
         if not objs:
-            self.warnings.append("[%s] Needs baking for %d node(s) but no mesh with UVs uses it."
-                                 % (mat.name, len(targets)))
-            return
+            # Materials-only exports: no mesh uses the material, so bake on a 0..1 UV plane.
+            plane = make_bake_plane(mat)
+            objs = [plane]
+            self.warnings.append("[%s] Baked on a temporary UV plane (no mesh uses this material); "
+                                 "procedurals driven by non-UV coordinates may look different." % mat.name)
         self._prepare_scene()
-        for node, socks in targets:
-            for sock in socks:
-                try:
-                    self._bake_socket(mat, node, sock, objs)
-                    log("Baked %s / %s.%s" % (mat.name, node.name, sock.identifier))
-                except Exception as exc:
-                    self.warnings.append("[%s] Bake of '%s.%s' failed: %s" % (mat.name, node.name, sock.name, exc))
+        try:
+            for node, socks in targets:
+                for sock in socks:
+                    try:
+                        self._bake_socket(mat, node, sock, objs)
+                        log("Baked %s / %s.%s" % (mat.name, node.name, sock.identifier))
+                    except Exception as exc:
+                        self.warnings.append("[%s] Bake of '%s.%s' failed: %s" % (mat.name, node.name, sock.name, exc))
+        finally:
+            if plane is not None:
+                mesh = plane.data
+                bpy.data.objects.remove(plane, do_unlink=True)
+                bpy.data.meshes.remove(mesh)
 
     def _bake_socket(self, mat, node, sock, objs):
         tree = mat.node_tree
@@ -819,7 +843,15 @@ def run(cfg):
     if bpy.context.object is not None and bpy.context.object.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
-    mats = collect_materials(bool(cfg.get("allMaterials", False)))
+    wanted = cfg.get("materials") or []
+    if wanted:
+        # Explicit material list (materials-only export): use them whether assigned or not.
+        mats = [bpy.data.materials[n] for n in wanted if n in bpy.data.materials]
+        for n in wanted:
+            if n not in bpy.data.materials:
+                warnings.append("Material '%s' not found." % n)
+    else:
+        mats = collect_materials(bool(cfg.get("allMaterials", False)))
     log("Found %d material(s)" % len(mats))
 
     baker = None
