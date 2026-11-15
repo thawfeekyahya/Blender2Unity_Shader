@@ -25,6 +25,12 @@ namespace B2U
         public float scale = 1f;
         public bool applyModifiers = true;
         public bool bakeAnimation = false;
+        public bool animKeyAllBones = true;
+        public bool animNlaStrips = true;
+        public bool animAllActions = true;
+        public bool animForceStartEndKeying = true;
+        public float animSamplingRate = 1f;
+        public float animSimplify = 1f;
         public bool includeArmatures = true;
         public bool includeEmpties = true;
         public bool includeLights = false;

@@ -161,7 +161,46 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
     # FBX
     global_scale: FloatProperty(name="Scale", default=1.0, min=0.001, max=1000.0)
     apply_modifiers: BoolProperty(name="Apply Modifiers", default=True)
-    bake_animation: BoolProperty(name="Animation", default=False)
+    # Animation (mirrors Blender's FBX exporter "Bake Animation" panel)
+    bake_animation: BoolProperty(
+        name="Bake Animation",
+        description="Export baked keyframe animation",
+        default=False,
+    )
+    anim_key_all_bones: BoolProperty(
+        name="Key All Bones",
+        description="Force exporting at least one key of animation for all bones "
+                    "(needed with some target applications, like UE4)",
+        default=True,
+    )
+    anim_nla_strips: BoolProperty(
+        name="NLA Strips",
+        description="Export each non-muted NLA strip as a separated FBX's AnimStack, if any, "
+                    "instead of global scene animation",
+        default=True,
+    )
+    anim_all_actions: BoolProperty(
+        name="All Actions",
+        description="Export each action as a separated FBX's AnimStack, instead of global scene animation "
+                    "(note that animated objects will get all actions compatible with them, "
+                    "others will get no animation at all)",
+        default=True,
+    )
+    anim_force_start_end_keying: BoolProperty(
+        name="Force Start/End Keying",
+        description="Always add a keyframe at start and end of actions for animated channels",
+        default=True,
+    )
+    anim_sampling_rate: FloatProperty(
+        name="Sampling Rate",
+        description="How often to evaluate animated values (in frames)",
+        default=1.0, min=0.01, max=100.0, soft_min=0.1, soft_max=10.0,
+    )
+    anim_simplify: FloatProperty(
+        name="Simplify",
+        description="How much to simplify baked values (0.0 to disable, the higher the more simplified)",
+        default=1.0, min=0.0, max=100.0, soft_min=0.0, soft_max=10.0,
+    )
     apply_transform: BoolProperty(name="Apply Transform", description="FBX exporter's experimental Apply Transform", default=False)
     object_types: EnumProperty(
         name="Object Types",
@@ -224,8 +263,19 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
         box.label(text="FBX", icon="EXPORT")
         box.prop(self, "global_scale")
         box.prop(self, "apply_modifiers")
-        box.prop(self, "bake_animation")
         box.prop(self, "apply_transform")
+
+        box = layout.box()
+        header = box.row()
+        header.prop(self, "bake_animation")
+        col = box.column()
+        col.enabled = self.bake_animation
+        col.prop(self, "anim_key_all_bones")
+        col.prop(self, "anim_nla_strips")
+        col.prop(self, "anim_all_actions")
+        col.prop(self, "anim_force_start_end_keying")
+        col.prop(self, "anim_sampling_rate")
+        col.prop(self, "anim_simplify")
 
     # ------------------------------------------------------------------
 
@@ -242,6 +292,12 @@ class EXPORT_SCENE_OT_b2u_unity(bpy.types.Operator, ExportHelper):
                 "scale": self.global_scale,
                 "applyModifiers": self.apply_modifiers,
                 "bakeAnimation": self.bake_animation,
+                "animKeyAllBones": self.anim_key_all_bones,
+                "animNlaStrips": self.anim_nla_strips,
+                "animAllActions": self.anim_all_actions,
+                "animForceStartEndKeying": self.anim_force_start_end_keying,
+                "animSamplingRate": self.anim_sampling_rate,
+                "animSimplify": self.anim_simplify,
                 "objectTypes": sorted(self.object_types),
                 "applyTransform": self.apply_transform,
             },

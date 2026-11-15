@@ -89,6 +89,10 @@ plugin, so both paths produce identical results.
 - **File → Export → Unity (B2U) (.fbx + shaders)**. Choose a location inside a Unity project's
   `Assets` folder, then pick Shader Graph or HLSL, the render pipeline, selection-only export,
   baking and the FBX options.
+- **Bake Animation** works like the option in Blender's own FBX exporter, with the same settings:
+  Key All Bones, NLA Strips, All Actions, Force Start/End Keying, Sampling Rate and Simplify.
+  Unity imports each exported action or NLA strip as its own animation clip on the FBX. The Unity
+  converter window has the same options under **Animation**.
 - **Shader Editor → Sidebar (N) → Unity** lists every node feeding the active material's output
   and marks it as *Converted*, *Approximated* or *Baked to texture*. Click a node to jump to it.
 

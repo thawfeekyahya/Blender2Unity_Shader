@@ -103,6 +103,12 @@ namespace B2U
                         { "scale", opt.scale },
                         { "applyModifiers", opt.applyModifiers },
                         { "bakeAnimation", opt.bakeAnimation },
+                        { "animKeyAllBones", opt.animKeyAllBones },
+                        { "animNlaStrips", opt.animNlaStrips },
+                        { "animAllActions", opt.animAllActions },
+                        { "animForceStartEndKeying", opt.animForceStartEndKeying },
+                        { "animSamplingRate", Mathf.Clamp(opt.animSamplingRate, 0.01f, 100f) },
+                        { "animSimplify", Mathf.Clamp(opt.animSimplify, 0f, 100f) },
                         { "objectTypes", opt.ObjectTypes() },
                         { "applyTransform", opt.applyTransform },
                     }

@@ -9,6 +9,8 @@ job.json (written by the Unity plugin):
   "fbxName": "scene.fbx",
   "exportFbx": true,
   "fbx": { "scale": 1.0, "applyModifiers": true, "bakeAnimation": false,
+           "animKeyAllBones": true, "animNlaStrips": true, "animAllActions": true,
+           "animForceStartEndKeying": true, "animSamplingRate": 1.0, "animSimplify": 1.0,
            "objectTypes": ["MESH", "ARMATURE", "EMPTY"], "applyTransform": false },
   "bakeUnsupported": true,
   "bakeSize": 1024,
@@ -768,6 +770,13 @@ def export_fbx(path, fbx_cfg):
         use_tspace=True,
         add_leaf_bones=False,
         bake_anim=bool(fbx_cfg.get("bakeAnimation", False)),
+        # Same options and defaults as Blender's FBX exporter "Bake Animation" panel.
+        bake_anim_use_all_bones=bool(fbx_cfg.get("animKeyAllBones", True)),
+        bake_anim_use_nla_strips=bool(fbx_cfg.get("animNlaStrips", True)),
+        bake_anim_use_all_actions=bool(fbx_cfg.get("animAllActions", True)),
+        bake_anim_force_startend_keying=bool(fbx_cfg.get("animForceStartEndKeying", True)),
+        bake_anim_step=min(max(float(fbx_cfg.get("animSamplingRate", 1.0)), 0.01), 100.0),
+        bake_anim_simplify_factor=min(max(float(fbx_cfg.get("animSimplify", 1.0)), 0.0), 100.0),
         path_mode="AUTO",
         embed_textures=False,
     )

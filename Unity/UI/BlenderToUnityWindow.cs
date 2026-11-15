@@ -13,7 +13,7 @@ namespace B2U
         Vector2 _scroll;
         Vector2 _warnScroll;
         ImportReport _last;
-        bool _showFbx = true, _showMaterials = true, _showLog;
+        bool _showFbx = true, _showMaterials = true, _showAnim = true, _showLog;
 
         [MenuItem("Tools/Blender to Unity/Converter", priority = 0)]
         public static BlenderToUnityWindow Open()
@@ -146,7 +146,6 @@ namespace B2U
                 {
                     _opt.scale = EditorGUILayout.FloatField("Scale", _opt.scale);
                     _opt.applyModifiers = EditorGUILayout.Toggle("Apply Modifiers", _opt.applyModifiers);
-                    _opt.bakeAnimation = EditorGUILayout.Toggle("Animation", _opt.bakeAnimation);
                     _opt.includeArmatures = EditorGUILayout.Toggle("Armatures", _opt.includeArmatures);
                     _opt.includeEmpties = EditorGUILayout.Toggle("Empties", _opt.includeEmpties);
                     _opt.includeLights = EditorGUILayout.Toggle("Lights", _opt.includeLights);
@@ -155,6 +154,33 @@ namespace B2U
                         "Blender's experimental 'Apply Transform' FBX option."), _opt.applyTransform);
                     _opt.bakeAxisConversion = EditorGUILayout.Toggle(new GUIContent("Bake Axis Conversion (Unity)",
                         "Removes the -90° X rotation on imported objects."), _opt.bakeAxisConversion);
+                }
+                EditorGUI.indentLevel--;
+            }
+
+            _showAnim = EditorGUILayout.Foldout(_showAnim, "Animation", true);
+            if (_showAnim)
+            {
+                EditorGUI.indentLevel++;
+                using (new EditorGUI.DisabledScope(!_opt.exportFbx))
+                {
+                    _opt.bakeAnimation = EditorGUILayout.Toggle(new GUIContent("Bake Animation",
+                        "Export baked keyframe animation (Blender FBX exporter option)."), _opt.bakeAnimation);
+                    using (new EditorGUI.DisabledScope(!_opt.bakeAnimation))
+                    {
+                        _opt.animKeyAllBones = EditorGUILayout.Toggle(new GUIContent("Key All Bones",
+                            "Force at least one key of animation for all bones."), _opt.animKeyAllBones);
+                        _opt.animNlaStrips = EditorGUILayout.Toggle(new GUIContent("NLA Strips",
+                            "Export each non-muted NLA strip as a separate animation clip."), _opt.animNlaStrips);
+                        _opt.animAllActions = EditorGUILayout.Toggle(new GUIContent("All Actions",
+                            "Export each action as a separate animation clip."), _opt.animAllActions);
+                        _opt.animForceStartEndKeying = EditorGUILayout.Toggle(new GUIContent("Force Start/End Keying",
+                            "Always add a keyframe at the start and end of actions for animated channels."), _opt.animForceStartEndKeying);
+                        _opt.animSamplingRate = EditorGUILayout.Slider(new GUIContent("Sampling Rate",
+                            "How often to evaluate animated values (in frames)."), _opt.animSamplingRate, 0.01f, 100f);
+                        _opt.animSimplify = EditorGUILayout.Slider(new GUIContent("Simplify",
+                            "How much to simplify baked values (0 disables)."), _opt.animSimplify, 0f, 100f);
+                    }
                 }
                 EditorGUI.indentLevel--;
             }
