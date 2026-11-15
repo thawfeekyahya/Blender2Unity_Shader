@@ -77,6 +77,9 @@ namespace B2U
             if (!opt.outputFolder.Replace('\\', '/').StartsWith("Assets"))
                 throw new Exception("Output folder must be inside the project's Assets folder.");
 
+            if (opt.exportFbx && !opt.AxesValid)
+                throw new Exception($"FBX Forward ({opt.axisForward}) and Up ({opt.axisUp}) must use different axes.");
+
             Directory.CreateDirectory(tempDir);
             var configPath = Path.Combine(tempDir, "job.json");
             File.WriteAllText(configPath, JsonWriter.Write(BuildJob(opt, tempDir, blend)));
@@ -101,6 +104,11 @@ namespace B2U
                 { "fbx", new JObj
                     {
                         { "scale", opt.scale },
+                        { "applyScaleOptions", opt.applyScaleOptions },
+                        { "axisForward", opt.axisForward },
+                        { "axisUp", opt.axisUp },
+                        { "applyUnitScale", opt.applyUnitScale },
+                        { "useSpaceTransform", opt.useSpaceTransform },
                         { "applyModifiers", opt.applyModifiers },
                         { "bakeAnimation", opt.bakeAnimation },
                         { "animKeyAllBones", opt.animKeyAllBones },

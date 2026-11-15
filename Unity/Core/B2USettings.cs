@@ -23,6 +23,11 @@ namespace B2U
         // FBX
         public bool exportFbx = true;
         public float scale = 1f;
+        public string applyScaleOptions = "FBX_SCALE_UNITS";
+        public string axisForward = "-Z";
+        public string axisUp = "Y";
+        public bool applyUnitScale = true;
+        public bool useSpaceTransform = true;
         public bool applyModifiers = true;
         public bool bakeAnimation = false;
         public bool animKeyAllBones = true;
@@ -52,6 +57,16 @@ namespace B2U
             var rp = GraphicsSettings.defaultRenderPipeline;
             return rp != null && rp.GetType().Name.Contains("Universal") ? TargetPipeline.URP : TargetPipeline.BuiltIn;
         }
+
+        public static readonly string[] Axes = { "X", "Y", "Z", "-X", "-Y", "-Z" };
+
+        public static readonly string[] ScaleOptionIds = { "FBX_SCALE_NONE", "FBX_SCALE_UNITS", "FBX_SCALE_CUSTOM", "FBX_SCALE_ALL" };
+        public static readonly string[] ScaleOptionLabels = { "All Local", "FBX Units Scale", "FBX Custom Scale", "FBX All" };
+
+        /// <summary>Forward and Up must use different axes (Blender's exporter rejects e.g. -Z / Z).</summary>
+        public bool AxesValid =>
+            Array.IndexOf(Axes, axisForward) >= 0 && Array.IndexOf(Axes, axisUp) >= 0 &&
+            axisForward[axisForward.Length - 1] != axisUp[axisUp.Length - 1];
 
         public List<string> ObjectTypes()
         {

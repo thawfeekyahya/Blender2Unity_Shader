@@ -30,7 +30,7 @@ import threading
 
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
-from bpy_extras.io_utils import ExportHelper
+from bpy_extras.io_utils import ExportHelper, orientation_helper
 
 from . import b2u_export as core
 
@@ -321,6 +321,7 @@ class B2UBackgroundExport:
             self._tmpdir = ""
 
 
+@orientation_helper(axis_forward="-Z", axis_up="Y")
 class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.Operator, ExportHelper):
     """Export FBX, textures and shader node data for Unity (converted by the B2U Unity package)"""
     bl_idname = "export_scene.b2u_unity"
@@ -335,7 +336,42 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
     all_materials: BoolProperty(name="Unused Materials", description="Also export materials not assigned to objects", default=False)
 
     # FBX
-    global_scale: FloatProperty(name="Scale", default=1.0, min=0.001, max=1000.0)
+    # Transform (mirrors Blender's FBX exporter "Transform" panel; Forward/Up come from
+    # @orientation_helper, which also prevents picking the same axis twice)
+    global_scale: FloatProperty(
+        name="Scale",
+        description="Scale all data (some importers do not support scaled armatures!)",
+        default=1.0, min=0.001, max=1000.0, soft_min=0.01, soft_max=1000.0,
+    )
+    apply_scale_options: EnumProperty(
+        name="Apply Scalings",
+        description="How to apply custom and units scalings in generated FBX file "
+                    "(Blender uses FBX scale to detect units on import, but many other applications "
+                    "do not handle the same way)",
+        items=[
+            ("FBX_SCALE_NONE", "All Local",
+             "Apply custom scaling and units scaling to each object transformation, FBX scale remains at 1.0"),
+            ("FBX_SCALE_UNITS", "FBX Units Scale",
+             "Apply custom scaling to each object transformation, and units scaling to FBX scale"),
+            ("FBX_SCALE_CUSTOM", "FBX Custom Scale",
+             "Apply custom scaling to FBX scale, and units scaling to each object transformation"),
+            ("FBX_SCALE_ALL", "FBX All",
+             "Apply custom scaling and units scaling to FBX scale"),
+        ],
+        default="FBX_SCALE_UNITS",
+    )
+    apply_unit_scale: BoolProperty(
+        name="Apply Unit",
+        description="Take into account current Blender units settings "
+                    "(if unset, raw Blender Units values are used as-is)",
+        default=True,
+    )
+    use_space_transform: BoolProperty(
+        name="Use Space Transform",
+        description="Apply global space transform to the object rotations. When disabled only the axis space "
+                    "is written to the file and all object transforms are left as-is",
+        default=True,
+    )
     apply_modifiers: BoolProperty(name="Apply Modifiers", default=True)
     # Animation (mirrors Blender's FBX exporter "Bake Animation" panel)
     bake_animation: BoolProperty(
@@ -377,7 +413,13 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
         description="How much to simplify baked values (0.0 to disable, the higher the more simplified)",
         default=1.0, min=0.0, max=100.0, soft_min=0.0, soft_max=10.0,
     )
-    apply_transform: BoolProperty(name="Apply Transform", description="FBX exporter's experimental Apply Transform", default=False)
+    apply_transform: BoolProperty(
+        name="Apply Transform",
+        description="Bake space transform into object data, avoids getting unwanted rotations to objects when "
+                    "target space is not aligned with Blender's space (WARNING! experimental option, use at own "
+                    "risk, known to be broken with armatures/animations)",
+        default=False,
+    )
     object_types: EnumProperty(
         name="Object Types",
         options={"ENUM_FLAG"},
@@ -408,10 +450,20 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
         self.draw_bake_box(layout)
 
         box = layout.box()
-        box.label(text="FBX", icon="EXPORT")
+        box.label(text="Transform", icon="ORIENTATION_GLOBAL")
         box.prop(self, "global_scale")
+        box.prop(self, "apply_scale_options")
+        box.prop(self, "axis_forward")
+        box.prop(self, "axis_up")
+        box.prop(self, "apply_unit_scale")
+        box.prop(self, "use_space_transform")
+        row = box.row()
+        row.prop(self, "apply_transform")
+        row.label(text="", icon="ERROR")
+
+        box = layout.box()
+        box.label(text="Geometry", icon="MESH_DATA")
         box.prop(self, "apply_modifiers")
-        box.prop(self, "apply_transform")
 
         box = layout.box()
         header = box.row()
@@ -441,6 +493,11 @@ class EXPORT_SCENE_OT_b2u_unity(B2UCommonProps, B2UBackgroundExport, bpy.types.O
             "allMaterials": self.all_materials,
             "fbx": {
                 "scale": self.global_scale,
+                "applyScaleOptions": self.apply_scale_options,
+                "axisForward": self.axis_forward,
+                "axisUp": self.axis_up,
+                "applyUnitScale": self.apply_unit_scale,
+                "useSpaceTransform": self.use_space_transform,
                 "applyModifiers": self.apply_modifiers,
                 "bakeAnimation": self.bake_animation,
                 "animKeyAllBones": self.anim_key_all_bones,

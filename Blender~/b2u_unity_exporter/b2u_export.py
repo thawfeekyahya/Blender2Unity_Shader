@@ -8,7 +8,9 @@ job.json (written by the Unity plugin):
   "outputDir": "/abs/path/for/fbx/and/textures",
   "fbxName": "scene.fbx",
   "exportFbx": true,
-  "fbx": { "scale": 1.0, "applyModifiers": true, "bakeAnimation": false,
+  "fbx": { "scale": 1.0, "applyScaleOptions": "FBX_SCALE_UNITS", "axisForward": "-Z",
+           "axisUp": "Y", "applyUnitScale": true, "useSpaceTransform": true,
+           "applyModifiers": true, "bakeAnimation": false,
            "animKeyAllBones": true, "animNlaStrips": true, "animAllActions": true,
            "animForceStartEndKeying": true, "animSamplingRate": 1.0, "animSimplify": 1.0,
            "objectTypes": ["MESH", "ARMATURE", "EMPTY"], "applyTransform": false },
@@ -773,7 +775,19 @@ def export_material(mat, cfg, images, warnings):
 # FBX
 # --------------------------------------------------------------------------------------
 
+AXES = ("X", "Y", "Z", "-X", "-Y", "-Z")
+SCALE_OPTIONS = ("FBX_SCALE_NONE", "FBX_SCALE_UNITS", "FBX_SCALE_CUSTOM", "FBX_SCALE_ALL")
+
+
 def export_fbx(path, fbx_cfg):
+    forward = fbx_cfg.get("axisForward", "-Z")
+    up = fbx_cfg.get("axisUp", "Y")
+    if forward not in AXES or up not in AXES or forward[-1] == up[-1]:
+        log("Invalid axes forward=%s up=%s; using -Z / Y" % (forward, up))
+        forward, up = "-Z", "Y"
+    scale_opt = fbx_cfg.get("applyScaleOptions", "FBX_SCALE_UNITS")
+    if scale_opt not in SCALE_OPTIONS:
+        scale_opt = "FBX_SCALE_UNITS"
     use_selection = OBJECT_FILTER is not None
     if use_selection:
         view_layer = bpy.context.view_layer
@@ -782,11 +796,13 @@ def export_fbx(path, fbx_cfg):
     kwargs = dict(
         filepath=path,
         use_selection=use_selection,
-        global_scale=float(fbx_cfg.get("scale", 1.0)),
-        apply_unit_scale=True,
-        apply_scale_options="FBX_SCALE_UNITS",
-        axis_forward="-Z",
-        axis_up="Y",
+        # Transform: same options as Blender's FBX exporter (defaults tuned for Unity).
+        global_scale=min(max(float(fbx_cfg.get("scale", 1.0)), 0.001), 1000.0),
+        apply_unit_scale=bool(fbx_cfg.get("applyUnitScale", True)),
+        apply_scale_options=scale_opt,
+        axis_forward=forward,
+        axis_up=up,
+        use_space_transform=bool(fbx_cfg.get("useSpaceTransform", True)),
         bake_space_transform=bool(fbx_cfg.get("applyTransform", False)),
         object_types=set(fbx_cfg.get("objectTypes", ["MESH", "ARMATURE", "EMPTY"])),
         use_mesh_modifiers=bool(fbx_cfg.get("applyModifiers", True)),

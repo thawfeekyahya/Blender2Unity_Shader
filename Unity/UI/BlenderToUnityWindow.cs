@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -13,7 +14,7 @@ namespace B2U
         Vector2 _scroll;
         Vector2 _warnScroll;
         ImportReport _last;
-        bool _showFbx = true, _showMaterials = true, _showAnim = true, _showLog;
+        bool _showFbx = true, _showTransform = true, _showMaterials = true, _showAnim = true, _showLog;
 
         [MenuItem("Tools/Blender to Unity/Converter", priority = 0)]
         public static BlenderToUnityWindow Open()
@@ -149,16 +150,39 @@ namespace B2U
                 _opt.exportFbx = EditorGUILayout.Toggle("Export FBX", _opt.exportFbx);
                 using (new EditorGUI.DisabledScope(!_opt.exportFbx))
                 {
-                    _opt.scale = EditorGUILayout.FloatField("Scale", _opt.scale);
                     _opt.applyModifiers = EditorGUILayout.Toggle("Apply Modifiers", _opt.applyModifiers);
                     _opt.includeArmatures = EditorGUILayout.Toggle("Armatures", _opt.includeArmatures);
                     _opt.includeEmpties = EditorGUILayout.Toggle("Empties", _opt.includeEmpties);
                     _opt.includeLights = EditorGUILayout.Toggle("Lights", _opt.includeLights);
                     _opt.includeCameras = EditorGUILayout.Toggle("Cameras", _opt.includeCameras);
-                    _opt.applyTransform = EditorGUILayout.Toggle(new GUIContent("Apply Transform (Blender)",
-                        "Blender's experimental 'Apply Transform' FBX option."), _opt.applyTransform);
                     _opt.bakeAxisConversion = EditorGUILayout.Toggle(new GUIContent("Bake Axis Conversion (Unity)",
                         "Removes the -90° X rotation on imported objects."), _opt.bakeAxisConversion);
+                }
+                EditorGUI.indentLevel--;
+            }
+
+            _showTransform = EditorGUILayout.Foldout(_showTransform, "Transform", true);
+            if (_showTransform)
+            {
+                EditorGUI.indentLevel++;
+                using (new EditorGUI.DisabledScope(!_opt.exportFbx))
+                {
+                    _opt.scale = EditorGUILayout.Slider(new GUIContent("Scale",
+                        "Scale all data (some importers do not support scaled armatures)."), _opt.scale, 0.001f, 1000f);
+                    var si = Mathf.Max(0, Array.IndexOf(ExportOptions.ScaleOptionIds, _opt.applyScaleOptions));
+                    si = EditorGUILayout.Popup(new GUIContent("Apply Scalings",
+                        "How custom and unit scaling are applied in the FBX file."), si, ExportOptions.ScaleOptionLabels);
+                    _opt.applyScaleOptions = ExportOptions.ScaleOptionIds[si];
+                    _opt.axisForward = AxisPopup("Forward", _opt.axisForward);
+                    _opt.axisUp = AxisPopup("Up", _opt.axisUp);
+                    if (!_opt.AxesValid)
+                        EditorGUILayout.HelpBox("Forward and Up must use different axes.", MessageType.Error);
+                    _opt.applyUnitScale = EditorGUILayout.Toggle(new GUIContent("Apply Unit",
+                        "Take Blender's unit settings into account."), _opt.applyUnitScale);
+                    _opt.useSpaceTransform = EditorGUILayout.Toggle(new GUIContent("Use Space Transform",
+                        "Apply the global space transform to object rotations."), _opt.useSpaceTransform);
+                    _opt.applyTransform = EditorGUILayout.Toggle(new GUIContent("Apply Transform",
+                        "Experimental: bake the space transform into object data. Known to break armatures/animations."), _opt.applyTransform);
                 }
                 EditorGUI.indentLevel--;
             }
@@ -191,7 +215,8 @@ namespace B2U
             }
 
             EditorGUILayout.Space();
-            using (new EditorGUI.DisabledScope(!B2USettings.BlenderPathValid || !File.Exists(_opt.blendPath ?? "")))
+            using (new EditorGUI.DisabledScope(!B2USettings.BlenderPathValid || !File.Exists(_opt.blendPath ?? "") ||
+                                               (_opt.exportFbx && !_opt.AxesValid)))
             {
                 if (GUILayout.Button("Convert", GUILayout.Height(32)))
                 {
@@ -204,6 +229,13 @@ namespace B2U
 
             DrawReport();
             EditorGUILayout.EndScrollView();
+        }
+
+        static string AxisPopup(string label, string value)
+        {
+            var i = Mathf.Max(0, Array.IndexOf(ExportOptions.Axes, value));
+            i = EditorGUILayout.Popup(label, i, ExportOptions.Axes);
+            return ExportOptions.Axes[i];
         }
 
         void DrawReport()

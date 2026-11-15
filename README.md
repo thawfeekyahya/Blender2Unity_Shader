@@ -89,6 +89,9 @@ plugin, so both paths produce identical results.
 - **File → Export → Unity (B2U) (.fbx + shaders)**. Choose a location inside a Unity project's
   `Assets` folder, then pick Shader Graph or HLSL, the render pipeline, selection-only export,
   baking and the FBX options.
+- **Transform** has the same options as Blender's FBX exporter: Scale, Apply Scalings, Forward,
+  Up, Apply Unit, Use Space Transform and Apply Transform. The defaults are tuned for Unity
+  (Forward −Z, Up Y, FBX Units Scale), and the Unity converter window has the same section.
 - **Bake Animation** works like the option in Blender's own FBX exporter, with the same settings:
   Key All Bones, NLA Strips, All Actions, Force Start/End Keying, Sampling Rate and Simplify.
   Unity imports each exported action or NLA strip as its own animation clip on the FBX. The Unity
